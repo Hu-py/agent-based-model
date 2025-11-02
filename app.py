@@ -13,7 +13,11 @@ from matplotlib.patches import Patch
 # City & layers
 # =============================
 CLASSES = {0:'Residential', 1:'Commercial', 2:'Industrial'}
-PALETTE = {0:(0.75,0.85,1.0), 1:(0.95,0.5,0.2), 2:(0.8,0.8,0.8)}
+PALETTE = {
+    0: (1.0, 0.9, 0.3),   # 黄色  Residential
+    1: (0.9, 0.2, 0.2),   # 红色  Commercial
+    2: (0.4, 0.4, 0.4)    # 深灰  Industrial
+}
 
 @dataclass
 class City:
@@ -306,7 +310,12 @@ if run_btn:
     st.subheader("Class Share over Time")
     fig2, ax2 = plt.subplots(figsize=(10,5))
     for k,name in CLASSES.items():
-        ax2.plot(hist_shares[:,k], label=name)
+        ax2.plot(
+            hist_shares[:, k],
+            label=name,
+            color=PALETTE[k],    # ✅ 使用与方格图一致的颜色
+            linewidth=2
+        )
     ax2.set_xlabel("Round"); ax2.set_ylabel("Share"); ax2.set_ylim(0,1)
     ax2.legend()
     st.pyplot(fig2)
