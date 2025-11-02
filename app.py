@@ -257,16 +257,19 @@ if run_btn:
             ax.imshow(render_grid(g))
             ax.set_title(f"Round {i}")
             ax.axis("off")
-            fname=os.path.join(tmpdir,f"frame_{i}.png")
-            plt.savefig(fname,bbox_inches='tight',pad_inches=0)
-            plt.close(fig)
-            imgs.append(imageio.imread(fname))
 
             legend_elements = [
                 Patch(facecolor=PALETTE[k], edgecolor='k', label=CLASSES[k]) for k in CLASSES
             ]
             ax.legend(handles=legend_elements, loc='upper center',
                       bbox_to_anchor=(0.5, -0.05), ncol=3, frameon=False)
+            
+            fname=os.path.join(tmpdir,f"frame_{i}.png")
+            plt.savefig(fname,bbox_inches='tight',pad_inches=0)
+            plt.close(fig)
+            imgs.append(imageio.imread(fname))
+
+
             
         gif_path=os.path.join(tmpdir,"simulation.gif")
         imageio.mimsave(gif_path, imgs, duration=0.8)
@@ -279,12 +282,24 @@ if run_btn:
         fig, ax = plt.subplots(figsize=(4,4))
         ax.imshow(render_grid(grids[0]))
         ax.axis("off")
+        legend_elements = [
+                Patch(facecolor=PALETTE[k], edgecolor='k', label=CLASSES[k]) for k in CLASSES
+            ]
+        ax.legend(handles=legend_elements, loc='upper center',
+                  bbox_to_anchor=(0.5, -0.05), ncol=3, frameon=False)
         st.pyplot(fig)
     with c2:
         st.subheader("Final City State")
         fig, ax = plt.subplots(figsize=(4,4))
         ax.imshow(render_grid(grids[-1]))
         ax.axis("off")
+
+        legend_elements = [
+                Patch(facecolor=PALETTE[k], edgecolor='k', label=CLASSES[k]) for k in CLASSES
+            ]
+        ax.legend(handles=legend_elements, loc='upper center',
+                  bbox_to_anchor=(0.5, -0.05), ncol=3, frameon=False)
+        
         st.pyplot(fig)
 
     # === 3. Line Chart ===
