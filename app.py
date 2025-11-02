@@ -237,15 +237,12 @@ st.set_page_config(page_title="ABM City Simulation", layout="wide")
 st.title("Agent-Based City Simulation")
 
 with st.sidebar:
-    st.header("Simulation Controls")
-    H = st.slider("Grid rows", 20, 120, 50)
-    W = st.slider("Grid cols", 20, 120, 50)
-    
-
     # ===============================
     # Sidebar Controls
     # ===============================
     st.sidebar.header("⚙️ Simulation Controls")
+    H = st.slider("Grid rows", 20, 120, 50)
+    W = st.slider("Grid cols", 20, 120, 50)
     seed = st.number_input("Random Seed", 0, 9999, 0)
     # --- Basic simulation settings ---
     rounds = st.sidebar.slider("Simulation rounds", 1, 50, 10)
