@@ -240,14 +240,41 @@ with st.sidebar:
     st.header("Simulation Controls")
     H = st.slider("Grid rows", 20, 120, 50)
     W = st.slider("Grid cols", 20, 120, 50)
+    
+
+    # ===============================
+    # Sidebar Controls
+    # ===============================
+    st.sidebar.header("⚙️ Simulation Controls")
     seed = st.number_input("Random Seed", 0, 9999, 0)
-    rounds = st.slider("Simulation rounds", 1, 50, 10)
-    parcels_per_dev = st.slider("Parcels per developer", 10, 200, 50)
-    POLICY['protect_industrial'] = st.checkbox("Protect industrial zones", True)
-    POLICY['commercial_height_limit'] = st.checkbox("Commercial height limit", False)
-    POLICY['tod_incentive'] = st.checkbox("TOD incentive", True)
-    FEATURES['enable_coop'] = st.checkbox("Enable cooperation", True)
-    FEATURES['endogenous_price'] = st.checkbox("Endogenous prices", True)
+    # --- Basic simulation settings ---
+    rounds = st.sidebar.slider("Simulation rounds", 1, 50, 10)
+    st.sidebar.caption("Number of simulation steps. More rounds = longer evolution of land use.")
+    
+    parcels_per_dev = st.sidebar.slider("Parcels per developer", 10, 200, 50)
+    st.sidebar.caption("Number of parcels assigned to each developer — affects competition level.")
+    
+    # --- Policy settings ---
+    st.sidebar.subheader("🏛️ Policy Options")
+    
+    POLICY['protect_industrial'] = st.sidebar.checkbox("Protect industrial zones", True)
+    st.sidebar.caption("Prevent excessive conversion of industrial land to other uses.")
+    
+    POLICY['commercial_height_limit'] = st.sidebar.checkbox("Commercial height limit", False)
+    st.sidebar.caption("Restrict the maximum density/height of commercial buildings.")
+    
+    POLICY['tod_incentive'] = st.sidebar.checkbox("TOD incentive", True)
+    st.sidebar.caption("Favor development near transit nodes; increases land value there.")
+    
+    # --- Model mechanisms ---
+    st.sidebar.subheader("🤝 Developer & Market Features")
+    
+    FEATURES['enable_coop'] = st.sidebar.checkbox("Enable cooperation", True)
+    st.sidebar.caption("Allow developers to cooperate for shared profit or land swapping.")
+    
+    FEATURES['endogenous_price'] = st.sidebar.checkbox("Endogenous prices", True)
+    st.sidebar.caption("Land prices change dynamically based on supply and demand.")
+
     run_btn = st.button("▶️ Run Simulation")
 
 if run_btn:
