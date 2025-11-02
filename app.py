@@ -5,6 +5,9 @@ import pandas as pd
 from dataclasses import dataclass, field
 from typing import Dict, Tuple, List
 from scipy.ndimage import distance_transform_edt, uniform_filter, convolve
+import imageio
+import tempfile
+import os
 
 # =============================
 # City & layers
@@ -92,7 +95,6 @@ class Developer:
         self.coop_with = {}
         self.comp_with = {}
 
-
 DEFAULTS = {
     'Large': DevParams(180.0,0.2,1.35,0.65,0.6,0.3,0.9,1.1,1.0),
     'Medium':DevParams(110.0,0.35,1.15,0.55,0.45,0.35,1.0,1.0,1.0),
@@ -105,12 +107,12 @@ DIST_COST_WEIGHT = 0.05
 NEIGH_WEIGHT = 0.6
 DIVERSITY_WEIGHT = 0.25
 
-# =============================
-# Profit & policy
-# =============================
 POLICY = {'protect_industrial': True,'commercial_height_limit': False,'tod_incentive': True}
 FEATURES = {'enable_coop': True,'endogenous_price': True}
 
+# =============================
+# Profit & Policy Functions
+# =============================
 def endogenous_price(city: City, to_k: int, alpha_demand=0.8, beta_heat=0.5):
     H,W = city.grid.shape
     counts = np.bincount(city.grid.ravel(), minlength=3)
@@ -154,18 +156,15 @@ def cell_profit(city: City, i:int, j:int, to_k:int, params: DevParams):
     return base_rev + aggl + jacobs - conv_pen - dist_pen - pol_pen
 
 # =============================
-# Simulation
+# Simulation Core
 # =============================
 def softmax_choice(values: np.ndarray, temp: float, k: int):
-    x = values/ (temp if temp>1e-6 else 1e-6)
+    x = values / (temp if temp>1e-6 else 1e-6)
     x = x - x.max()
     p = np.exp(x)
     p = p / (p.sum()+1e-12)
     idx = np.arange(len(values))
     return np.random.choice(idx, size=min(k,len(values)), replace=False, p=p)
-
-def adjacent(a:Tuple[int,int], b:Tuple[int,int]):
-    return max(abs(a[0]-b[0]), abs(a[1]-b[1]))==1
 
 @dataclass
 class MarketOutcome:
@@ -201,46 +200,31 @@ def run_round(city: City, devs: List[Developer], rseed=0, parcels_per_dev=50):
             spend = min(bid, budget)
             budget -= spend
             proposals.append((d_idx,(i,j),k_best,spend))
+    heat_add = np.zeros_like(city.heat)
     per_cell = {}
     for d_idx,(i,j),k,b in proposals:
         per_cell.setdefault((i,j), []).append((d_idx,k,b))
-    coop_edges = {('Large','Medium'):0,('Large','Small'):0,('Medium','Small'):0}
-    comp_edges = {('Large','Medium'):0,('Large','Small'):0,('Medium','Small'):0}
-    heat_add = np.zeros_like(city.heat)
     for (i,j), lst in per_cell.items():
-        if len(lst)==1:
-            d_idx,k,bid = lst[0]
-            city.grid[i,j] = k
-            devs[d_idx].profit += bid
-            devs[d_idx].built[k] = devs[d_idx].built.get(k,0)+1
-            heat_add[i,j]=0.05
-        else:
-            lst.sort(key=lambda x:x[2], reverse=True)
-            d_idx,k,bid = lst[0]
-            city.grid[i,j]=k
-            devs[d_idx].profit+=bid
-            devs[d_idx].built[k]=devs[d_idx].built.get(k,0)+1
-            heat_add[i,j]=0.05
-            for o_idx, ok, ob in lst[1:]:
-                pair = tuple(sorted((devs[d_idx].name, devs[o_idx].name)))
-                if FEATURES['enable_coop']:
-                    coop_edges[pair]=coop_edges.get(pair,0)+1
-                else:
-                    comp_edges[pair]=comp_edges.get(pair,0)+1
+        lst.sort(key=lambda x:x[2], reverse=True)
+        d_idx,k,bid = lst[0]
+        city.grid[i,j]=k
+        devs[d_idx].profit+=bid
+        devs[d_idx].built[k]=devs[d_idx].built.get(k,0)+1
+        heat_add[i,j]=0.05
     city.heat = np.clip(city.heat + heat_add, 0.0, 1.0)
-    return MarketOutcome(coop_edges, comp_edges)
 
 def run_sim(H,W,rounds,parcels_per_dev,seed=0):
     city = make_city(H,W,seed)
     devs = [Developer(name, DEFAULTS[name]) for name in ['Large','Medium','Small']]
     hist_shares=[]
+    grids=[city.grid.copy()]
     for r in range(rounds):
         run_round(city, devs, rseed=seed+r, parcels_per_dev=parcels_per_dev)
         counts = np.bincount(city.grid.ravel(), minlength=3)
         shares = counts / city.grid.size
         hist_shares.append(shares)
-    hist_shares = np.array(hist_shares)
-    return city, devs, hist_shares
+        grids.append(city.grid.copy())
+    return city, devs, np.array(hist_shares), grids
 
 # =============================
 # Streamlit UI
@@ -248,43 +232,79 @@ def run_sim(H,W,rounds,parcels_per_dev,seed=0):
 st.set_page_config(page_title="ABM City Simulation", layout="wide")
 st.title("Agent-Based City Simulation")
 
-# -------- Sidebar Controls --------
 with st.sidebar:
-    st.header("City & Simulation Parameters")
-    H = st.slider("Rows (H)", 20, 120, 50)
-    W = st.slider("Cols (W)", 20, 120, 50)
+    st.header("Simulation Controls")
+    H = st.slider("Grid rows", 20, 120, 50)
+    W = st.slider("Grid cols", 20, 120, 50)
     seed = st.number_input("Random Seed", 0, 9999, 0)
+    rounds = st.slider("Simulation rounds", 1, 50, 10)
+    parcels_per_dev = st.slider("Parcels per developer", 10, 200, 50)
+    POLICY['protect_industrial'] = st.checkbox("Protect industrial zones", True)
+    POLICY['commercial_height_limit'] = st.checkbox("Commercial height limit", False)
+    POLICY['tod_incentive'] = st.checkbox("TOD incentive", True)
+    FEATURES['enable_coop'] = st.checkbox("Enable cooperation", True)
+    FEATURES['endogenous_price'] = st.checkbox("Endogenous prices", True)
+    run_btn = st.button("▶️ Run Simulation")
 
-    rounds = st.slider("Rounds", 1, 60, 10)
-    parcels_per_dev = st.slider("Parcels per developer per round", 10, 200, 50)
-    st.header("Developer Settings")
-    enable_coop = st.checkbox("Enable JV cooperation", value=True)
-    enable_endo = st.checkbox("Enable endogenous prices", value=True)
-    POLICY['protect_industrial'] = st.checkbox("Protect industrial zones", value=True)
-    POLICY['commercial_height_limit'] = st.checkbox("Commercial height limit", value=False)
-    POLICY['tod_incentive'] = st.checkbox("TOD incentives on roads", value=True)
+if run_btn:
+    city, devs, hist_shares, grids = run_sim(H,W,rounds,parcels_per_dev,seed)
 
-    if st.button("Run Simulation"):
-        st.session_state.run_sim = True
+    # === 1. GIF Animation ===
+    with tempfile.TemporaryDirectory() as tmpdir:
+        imgs=[]
+        for i,g in enumerate(grids):
+            fig, ax = plt.subplots(figsize=(4,4))
+            ax.imshow(render_grid(g))
+            ax.set_title(f"Round {i}")
+            ax.axis("off")
+            fname=os.path.join(tmpdir,f"frame_{i}.png")
+            plt.savefig(fname,bbox_inches='tight',pad_inches=0)
+            plt.close(fig)
+            imgs.append(imageio.imread(fname))
+        gif_path=os.path.join(tmpdir,"simulation.gif")
+        imageio.mimsave(gif_path, imgs, duration=0.8)
+        st.image(gif_path, caption="Urban Evolution Animation (GIF)", use_container_width=True)
 
-# -------- Main Panel --------
-if 'run_sim' in st.session_state and st.session_state.run_sim:
-    city, devs, hist_shares = run_sim(H,W,rounds,parcels_per_dev,seed)
-    
-    st.subheader("City Map")
-    fig, ax = plt.subplots(figsize=(6,6))
-    ax.imshow(render_grid(city.grid))
-    ax.set_xticks([]); ax.set_yticks([])
-    st.pyplot(fig, use_container_width=True)
+    # === 2. Initial and Final Grids ===
+    c1,c2 = st.columns(2)
+    with c1:
+        st.subheader("Initial City State")
+        fig, ax = plt.subplots(figsize=(4,4))
+        ax.imshow(render_grid(grids[0]))
+        ax.axis("off")
+        st.pyplot(fig)
+    with c2:
+        st.subheader("Final City State")
+        fig, ax = plt.subplots(figsize=(4,4))
+        ax.imshow(render_grid(grids[-1]))
+        ax.axis("off")
+        st.pyplot(fig)
 
-    st.subheader("Class Shares Over Time")
-    fig2, ax2 = plt.subplots(figsize=(12,6))
+    # === 3. Line Chart ===
+    st.subheader("Class Share over Time")
+    fig2, ax2 = plt.subplots(figsize=(10,5))
     for k,name in CLASSES.items():
         ax2.plot(hist_shares[:,k], label=name)
-    ax2.set_xlabel("Step"); ax2.set_ylabel("Share"); ax2.set_ylim(0,1)
+    ax2.set_xlabel("Round"); ax2.set_ylabel("Share"); ax2.set_ylim(0,1)
     ax2.legend()
-    st.pyplot(fig2, use_container_width=True)
+    st.pyplot(fig2)
 
-    st.subheader("Developer Profit")
+    # === 4. Developer Profits ===
+    st.subheader("Developer Profits")
     prof_df = pd.DataFrame({d.name: d.profit for d in devs}, index=["Profit"])
     st.table(prof_df)
+
+    # === 5. Parameter Explanation ===
+    st.markdown("""
+    ---
+    **Parameter Notes**  
+    - *Grid size (H, W)*: City spatial extent  
+    - *Rounds*: Iteration steps (time progression)  
+    - *Parcels per developer*: Decision samples per agent  
+    - *Protect industrial zones*: Prevent industrial land conversion  
+    - *Commercial height limit*: Restrict commercial intensity far from center  
+    - *TOD incentive*: Encourage development near roads  
+    - *Endogenous prices*: Dynamic pricing by demand  
+    - *Enable cooperation*: Allow joint venture opportunities  
+    """)
+
