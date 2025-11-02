@@ -1,18 +1,16 @@
-# app.py
 import streamlit as st
 import numpy as np
 import matplotlib.pyplot as plt
+import pandas as pd
 from dataclasses import dataclass
 from typing import Dict, Tuple, List
 from scipy.ndimage import distance_transform_edt, uniform_filter, convolve
 
-st.set_page_config(page_title="ABM: Three Developers on Grid City", layout="wide")
-
 # =============================
 # City & layers
 # =============================
-CLASSES = {0: 'Residential', 1: 'Commercial', 2: 'Industrial'}
-PALETTE = {0: (0.75,0.85,1.0), 1: (0.95,0.5,0.2), 2: (0.8,0.8,0.8)}
+CLASSES = {0:'Residential', 1:'Commercial', 2:'Industrial'}
+PALETTE = {0:(0.75,0.85,1.0), 1:(0.95,0.5,0.2), 2:(0.8,0.8,0.8)}
 
 @dataclass
 class City:
@@ -26,16 +24,12 @@ class City:
 def make_city(H=50, W=50, seed=0) -> City:
     rng = np.random.default_rng(seed)
     grid = rng.integers(0,3,size=(H,W))
-    # plus-shaped roads through CBD
     roads = np.zeros((H,W), dtype=np.uint8)
     cx, cy = H//2, W//2
-    roads[cx,:] = 1
-    roads[:,cy] = 1
-    # ring
+    roads[cx,:] = 1; roads[:,cy] = 1
     rr = min(H,W)//3
-    for t in np.linspace(0, 2*np.pi, 400, endpoint=False):
-        i = int(cx + rr*np.sin(t))
-        j = int(cy + rr*np.cos(t))
+    for t in np.linspace(0,2*np.pi,400,endpoint=False):
+        i = int(cx + rr*np.sin(t)); j=int(cy+rr*np.cos(t))
         if 0<=i<H and 0<=j<W: roads[i,j]=1
     dist = distance_transform_edt(1-roads)
     access = 1.0/(1.0+dist)
@@ -63,13 +57,9 @@ def neigh_share(grid: np.ndarray, target: int, r: int=1) -> np.ndarray:
     ker = np.ones((k,k),dtype=float)
     num = convolve(mask, ker, mode='nearest')
     den = convolve(np.ones_like(mask), ker, mode='nearest')
-    num = num - mask
-    den = den - 1
+    num = num - mask; den = den - 1
     den = np.maximum(den,1.0)
     return num/den
-
-def adjacent(a:Tuple[int,int], b:Tuple[int,int]):
-    return max(abs(a[0]-b[0]), abs(a[1]-b[1]))==1
 
 # =============================
 # Developer agents
@@ -94,42 +84,30 @@ class Developer:
     built: Dict[int,int] = None
     coop_with: Dict[str,int] = None
     comp_with: Dict[str,int] = None
-
     def reset_stats(self):
         self.profit = 0.0
         self.built = {0:0,1:0,2:0}
         self.coop_with = {}
         self.comp_with = {}
 
-# Default params
 DEFAULTS = {
-    'Large': DevParams(180.0, 0.2, 1.35, 0.65, 0.6, 0.3, 0.9,1.1,1.0),
-    'Medium': DevParams(110.0, 0.35,1.15,0.55,0.45,0.35,1.0,1.0,1.0),
-    'Small': DevParams(60.0, 0.55,1.05,0.4,0.3,0.45,1.1,0.9,1.0)
+    'Large': DevParams(180.0,0.2,1.35,0.65,0.6,0.3,0.9,1.1,1.0),
+    'Medium':DevParams(110.0,0.35,1.15,0.55,0.45,0.35,1.0,1.0,1.0),
+    'Small': DevParams(60.0,0.55,1.05,0.4,0.3,0.45,1.1,0.9,1.0),
 }
 
-BASE_PRICE = {0:1.0, 1:1.6, 2:1.2}
-CONV_COST = {(0,0):0.1,(0,1):0.3,(0,2):0.25,
-             (1,0):0.35,(1,1):0.1,(1,2):0.3,
-             (2,0):0.3,(2,1):0.35,(2,2):0.1}
+BASE_PRICE = {0:1.0,1:1.6,2:1.2}
+CONV_COST = {(0,0):0.1,(0,1):0.3,(0,2):0.25,(1,0):0.35,(1,1):0.1,(1,2):0.3,(2,0):0.3,(2,1):0.35,(2,2):0.1}
 DIST_COST_WEIGHT = 0.05
 NEIGH_WEIGHT = 0.6
 DIVERSITY_WEIGHT = 0.25
 
-# Policy toggles
-POLICY = {
-    'protect_industrial': True,
-    'commercial_height_limit': False,
-    'tod_incentive': True
-}
-FEATURES = {
-    'enable_coop': True,
-    'endogenous_price': True
-}
+# =============================
+# Profit & policy
+# =============================
+POLICY = {'protect_industrial': True,'commercial_height_limit': False,'tod_incentive': True}
+FEATURES = {'enable_coop': True,'endogenous_price': True}
 
-# =============================
-# Profit / utility
-# =============================
 def endogenous_price(city: City, to_k: int, alpha_demand=0.8, beta_heat=0.5):
     H,W = city.grid.shape
     counts = np.bincount(city.grid.ravel(), minlength=3)
@@ -137,60 +115,60 @@ def endogenous_price(city: City, to_k: int, alpha_demand=0.8, beta_heat=0.5):
     target = {0:0.34,1:0.33,2:0.33}[to_k]
     gap = target - share[to_k]
     mean_heat = city.heat.mean()
-    return BASE_PRICE[to_k]*(1 + alpha_demand*gap)*(1+beta_heat*mean_heat)
+    return BASE_PRICE[to_k] * (1 + alpha_demand*gap) * (1 + beta_heat*mean_heat)
 
 def policy_penalty(city: City, i:int, j:int, from_k:int, to_k:int):
-    pen=0.0
+    pen = 0.0
     if POLICY['protect_industrial'] and from_k==2 and to_k!=2 and city.ind_protect[i,j]==1:
         pen += 0.5
     if POLICY['commercial_height_limit'] and to_k==1:
-        di,dj=abs(i-city.center[0]),abs(j-city.center[1])
-        d = np.hypot(di,dj)
+        di = abs(i-city.center[0]); dj=abs(j-city.center[1]); d = np.hypot(di,dj)
         ring = min(city.grid.shape)//3
-        if d>ring: pen+=0.3
-    if POLICY['tod_incentive'] and to_k in (0,1) and city.roads[i,j]==1:
-        pen -= 0.2
+        if d>ring: pen += 0.3
+    if POLICY['tod_incentive'] and to_k in (0,1):
+        if city.roads[i,j]==1: pen -= 0.2
     return pen
 
 def cell_profit(city: City, i:int, j:int, to_k:int, params: DevParams):
     from_k = city.grid[i,j]
     access = city.access[i,j]
     neigh_k = neigh_share(city.grid, to_k)[i,j]
-    neighR = neigh_share(city.grid,0)[i,j]
-    neighC = neigh_share(city.grid,1)[i,j]
-    neighI = neigh_share(city.grid,2)[i,j]
-    arr = np.array([neighR,neighC,neighI]); arr = np.clip(arr,1e-6,1.0)
+    arr = np.array([neigh_share(city.grid,k)[i,j] for k in [0,1,2]])
+    arr = np.clip(arr,1e-6,1.0)
     ent = -np.sum(arr*np.log(arr))/np.log(3)
     if FEATURES['endogenous_price']:
-        p = endogenous_price(city,to_k)*(1 + 0.25*city.heat[i,j])
+        p = endogenous_price(city, to_k)*(1+0.25*city.heat[i,j])
     else:
         p = BASE_PRICE[to_k]
     price_pref = {0: params.pref_R*p, 1: params.pref_C*p, 2: params.pref_I*p}[to_k]
-    base_rev = price_pref*(0.6*access+0.4)
-    conv_pen = params.conversion_aversion*CONV_COST[(from_k,to_k)]
-    di,dj = abs(i-city.center[0]), abs(j-city.center[1])
-    dist_pen = DIST_COST_WEIGHT*np.hypot(di,dj)
+    base_rev = price_pref * (0.6*access+0.4)
+    conv_pen = params.conversion_aversion * CONV_COST[(from_k,to_k)]
+    di = abs(i-city.center[0]); dj = abs(j-city.center[1]); d = np.hypot(di,dj)
+    dist_pen = DIST_COST_WEIGHT*d
     pol_pen = policy_penalty(city,i,j,from_k,to_k)
-    aggl = NEIGH_WEIGHT*neigh_k
-    jacobs = DIVERSITY_WEIGHT*ent
+    aggl = NEIGH_WEIGHT * neigh_k
+    jacobs = DIVERSITY_WEIGHT * ent
     return base_rev + aggl + jacobs - conv_pen - dist_pen - pol_pen
 
+# =============================
+# Simulation
+# =============================
 def softmax_choice(values: np.ndarray, temp: float, k: int):
-    x = values / (temp if temp>1e-6 else 1e-6)
+    x = values/ (temp if temp>1e-6 else 1e-6)
     x = x - x.max()
     p = np.exp(x)
-    p = p/(p.sum()+1e-12)
+    p = p / (p.sum()+1e-12)
     idx = np.arange(len(values))
     return np.random.choice(idx, size=min(k,len(values)), replace=False, p=p)
+
+def adjacent(a:Tuple[int,int], b:Tuple[int,int]):
+    return max(abs(a[0]-b[0]), abs(a[1]-b[1]))==1
 
 @dataclass
 class MarketOutcome:
     coop_edges: Dict[Tuple[str,str], int]
     comp_edges: Dict[Tuple[str,str], int]
 
-# =============================
-# Simulation rounds
-# =============================
 def run_round(city: City, devs: List[Developer], rseed=0, parcels_per_dev=50):
     rng = np.random.default_rng(rseed)
     H,W = city.grid.shape
@@ -198,7 +176,7 @@ def run_round(city: City, devs: List[Developer], rseed=0, parcels_per_dev=50):
     N = len(candidates)
     access_flat = city.access.ravel()
     access_probs = access_flat/(access_flat.sum()+1e-12)
-    proposals=[]
+    proposals = []
     for d_idx, dev in enumerate(devs):
         budget = dev.params.budget_per_round
         kcand = min(parcels_per_dev*4, N)
@@ -207,62 +185,28 @@ def run_round(city: City, devs: List[Developer], rseed=0, parcels_per_dev=50):
         vals, choices = [], []
         for (i,j) in cand:
             per_k = [cell_profit(city,i,j,k,dev.params) for k in [0,1,2]]
-            k_best = int(np.argmax(per_k))
-            v = float(per_k[k_best])
+            k_best = int(np.argmax(per_k)); v = float(per_k[k_best])
             bid = min(v*dev.params.aggressiveness, budget)
-            if bid>0: 
+            if bid>0:
                 vals.append(v)
                 choices.append((i,j,k_best,bid))
         if len(vals)==0: continue
-        sel_ids = softmax_choice(np.array(vals), dev.params.risk_temp, len(choices)//2)
+        sel_ids = softmax_choice(np.array(vals), dev.params.risk_temp, k=parcels_per_dev)
         for sid in sel_ids:
-            i,j,k,bid = choices[sid]
-            city.grid[i,j]=k
-            dev.profit += bid
-            dev.built[k]+=1
-    return city
-
-# =============================
-# Streamlit UI
-# =============================
-st.title("Agent-Based Model: Three Developers in Grid City")
-
-H = st.sidebar.slider("Grid Height", 20, 80, 50)
-W = st.sidebar.slider("Grid Width", 20, 80, 50)
-seed = st.sidebar.number_input("Random Seed", 0, 9999, 0)
-
-if 'city' not in st.session_state:
-    st.session_state.city = make_city(H,W,seed)
-
-if st.sidebar.button("Reset City"):
-    st.session_state.city = make_city(H,W,seed)
-
-city = st.session_state.city
-rgb = render_grid(city.grid)
-
-st.subheader("City Layout")
-fig, ax = plt.subplots(figsize=(8,8))
-ax.imshow(rgb, interpolation='nearest')
-ax.set_xticks([]); ax.set_yticks([])
-st.pyplot(fig)
-
-# Developers
-devs = [Developer(name, DEFAULTS[name]) for name in ['Large','Medium','Small']]
-for dev in devs: dev.reset_stats()
-
-st.subheader("Simulation Controls")
-rounds = st.slider("Simulation Steps", 1, 20, 5)
-parcels_per_dev = st.slider("Parcels per Developer per Round", 10, 200, 50)
-
-if st.button("Run Simulation"):
-    for t in range(rounds):
-        city = run_round(city, devs, rseed=seed+t, parcels_per_dev=parcels_per_dev)
-    st.session_state.city = city
-    rgb = render_grid(city.grid)
-    fig, ax = plt.subplots(figsize=(8,8))
-    ax.imshow(rgb, interpolation='nearest')
-    ax.set_xticks([]); ax.set_yticks([])
-    st.pyplot(fig)
-    st.subheader("Developer Statistics")
-    for dev in devs:
-        st.write(f"**{dev.name}**: profit={dev.profit:.2f}, built={dev.built}")
+            (i,j,k_best,bid) = choices[sid]
+            if budget<=0: break
+            spend = min(bid, budget)
+            budget -= spend
+            proposals.append((d_idx,(i,j),k_best,spend))
+    per_cell = {}
+    for d_idx,(i,j),k,b in proposals:
+        per_cell.setdefault((i,j), []).append((d_idx,k,b))
+    coop_edges = {('Large','Medium'):0,('Large','Small'):0,('Medium','Small'):0}
+    comp_edges = {('Large','Medium'):0,('Large','Small'):0,('Medium','Small'):0}
+    heat_add = np.zeros_like(city.heat)
+    for (i,j), lst in per_cell.items():
+        if len(lst)==1:
+            d_idx,k,bid = lst[0]
+            city.grid[i,j] = k
+            devs[d_idx].profit += bid
+            devs[d_idx].built[k] =
