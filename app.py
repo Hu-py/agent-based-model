@@ -76,19 +76,22 @@ class DevParams:
     pref_C: float
     pref_I: float
 
+
 @dataclass
 class Developer:
     name: str
     params: DevParams
     profit: float = 0.0
-    built: Dict[int,int] = None
-    coop_with: Dict[str,int] = None
-    comp_with: Dict[str,int] = None
+    built: Dict[int,int] = field(default_factory=lambda: {0:0,1:0,2:0})
+    coop_with: Dict[str,int] = field(default_factory=dict)
+    comp_with: Dict[str,int] = field(default_factory=dict)
+
     def reset_stats(self):
         self.profit = 0.0
         self.built = {0:0,1:0,2:0}
         self.coop_with = {}
         self.comp_with = {}
+
 
 DEFAULTS = {
     'Large': DevParams(180.0,0.2,1.35,0.65,0.6,0.3,0.9,1.1,1.0),
