@@ -349,17 +349,4 @@ if run_btn:
     prof_df = pd.DataFrame({d.name: d.profit for d in devs}, index=["Profit"])
     st.table(prof_df)
 
-    # === 5. Parameter Explanation ===
-    st.markdown("""
-    ---
-    **Parameter Notes**  
-    - *Grid size (H, W)*: City spatial extent  
-    - *Rounds*: Iteration steps (time progression)  
-    - *Parcels per developer*: Decision samples per agent  
-    - *Protect industrial zones*: Prevent industrial land conversion  
-    - *Commercial height limit*: Restrict commercial intensity far from center  
-    - *TOD incentive*: Encourage development near roads  
-    - *Endogenous prices*: Dynamic pricing by demand  
-    - *Enable cooperation*: Allow joint venture opportunities  
-    """)
 
