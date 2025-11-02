@@ -209,4 +209,79 @@ def run_round(city: City, devs: List[Developer], rseed=0, parcels_per_dev=50):
             d_idx,k,bid = lst[0]
             city.grid[i,j] = k
             devs[d_idx].profit += bid
-            devs[d_idx].built[k] =
+            devs[d_idx].built[k] = devs[d_idx].built.get(k,0)+1
+            heat_add[i,j]=0.05
+        else:
+            lst.sort(key=lambda x:x[2], reverse=True)
+            d_idx,k,bid = lst[0]
+            city.grid[i,j]=k
+            devs[d_idx].profit+=bid
+            devs[d_idx].built[k]=devs[d_idx].built.get(k,0)+1
+            heat_add[i,j]=0.05
+            for o_idx, ok, ob in lst[1:]:
+                pair = tuple(sorted((devs[d_idx].name, devs[o_idx].name)))
+                if FEATURES['enable_coop']:
+                    coop_edges[pair]=coop_edges.get(pair,0)+1
+                else:
+                    comp_edges[pair]=comp_edges.get(pair,0)+1
+    city.heat = np.clip(city.heat + heat_add, 0.0, 1.0)
+    return MarketOutcome(coop_edges, comp_edges)
+
+def run_sim(H,W,rounds,parcels_per_dev,seed=0):
+    city = make_city(H,W,seed)
+    devs = [Developer(name, DEFAULTS[name]) for name in ['Large','Medium','Small']]
+    hist_shares=[]
+    for r in range(rounds):
+        run_round(city, devs, rseed=seed+r, parcels_per_dev=parcels_per_dev)
+        counts = np.bincount(city.grid.ravel(), minlength=3)
+        shares = counts / city.grid.size
+        hist_shares.append(shares)
+    hist_shares = np.array(hist_shares)
+    return city, devs, hist_shares
+
+# =============================
+# Streamlit UI
+# =============================
+st.set_page_config(page_title="ABM City Simulation", layout="wide")
+st.title("Agent-Based City Simulation")
+
+# -------- Sidebar Controls --------
+with st.sidebar:
+    st.header("City & Simulation Parameters")
+    H = st.slider("Rows (H)", 20, 120, 50)
+    W = st.slider("Cols (W)", 20, 120, 50)
+    seed = st.number_input("Random Seed", 0, 9999, 0)
+    rounds = st.slider("Rounds", 1, 60, 10)
+    parcels_per_dev = st.slider("Parcels per developer per round", 10, 200, 50)
+
+    st.header("Developer Settings")
+    enable_coop = st.checkbox("Enable JV cooperation", value=True)
+    enable_endo = st.checkbox("Enable endogenous prices", value=True)
+    POLICY['protect_industrial'] = st.checkbox("Protect industrial zones", value=True)
+    POLICY['commercial_height_limit'] = st.checkbox("Commercial height limit", value=False)
+    POLICY['tod_incentive'] = st.checkbox("TOD incentives on roads", value=True)
+
+    if st.button("Run Simulation"):
+        st.session_state.run_sim = True
+
+# -------- Main Panel --------
+if 'run_sim' in st.session_state and st.session_state.run_sim:
+    city, devs, hist_shares = run_sim(H,W,rounds,parcels_per_dev,seed)
+    
+    st.subheader("City Map")
+    fig, ax = plt.subplots(figsize=(6,6))
+    ax.imshow(render_grid(city.grid))
+    ax.set_xticks([]); ax.set_yticks([])
+    st.pyplot(fig, use_container_width=True)
+
+    st.subheader("Class Shares Over Time")
+    fig2, ax2 = plt.subplots(figsize=(12,6))
+    for k,name in CLASSES.items():
+        ax2.plot(hist_shares[:,k], label=name)
+    ax2.set_xlabel("Step"); ax2.set_ylabel("Share"); ax2.set_ylim(0,1)
+    ax2.legend()
+    st.pyplot(fig2, use_container_width=True)
+
+    st.subheader("Developer Profit")
+    prof_df = pd.DataFrame({d.name: d.profit for d in devs}, index=["Profit"])
+    st.table(prof_df)
