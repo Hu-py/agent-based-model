@@ -255,11 +255,8 @@ with st.sidebar:
     W = st.slider("Cols (W)", 20, 120, 50)
     seed = st.number_input("Random Seed", 0, 9999, 0)
 
-    rounds = st.sidebar.slider("Rounds", 1, 60, 10, 1)
-    st.sidebar.caption("Number of simulation steps to run")
-    
-    ppd = st.sidebar.slider("Parcels/dev/round", 10, 200, 50, 5)
-    st.sidebar.caption("Number of parcels each developer attempts per round")
+    rounds = st.slider("Rounds", 1, 60, 10)
+    parcels_per_dev = st.slider("Parcels per developer per round", 10, 200, 50)
     st.header("Developer Settings")
     enable_coop = st.checkbox("Enable JV cooperation", value=True)
     enable_endo = st.checkbox("Enable endogenous prices", value=True)
