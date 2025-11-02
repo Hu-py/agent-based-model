@@ -8,7 +8,7 @@ from scipy.ndimage import distance_transform_edt, uniform_filter, convolve
 import imageio
 import tempfile
 import os
-
+from matplotlib.patches import Patch
 # =============================
 # City & layers
 # =============================
@@ -261,14 +261,13 @@ if run_btn:
             plt.savefig(fname,bbox_inches='tight',pad_inches=0)
             plt.close(fig)
             imgs.append(imageio.imread(fname))
-            from matplotlib.patches import Patch
+
             legend_elements = [
                 Patch(facecolor=PALETTE[k], edgecolor='k', label=CLASSES[k]) for k in CLASSES
             ]
-            ax.legend(handles=legend_elements, loc='lower center',
+            ax.legend(handles=legend_elements, loc='upper center',
                       bbox_to_anchor=(0.5, -0.05), ncol=3, frameon=False)
-        
-            st.pyplot(fig, use_container_width=True)
+            
         gif_path=os.path.join(tmpdir,"simulation.gif")
         imageio.mimsave(gif_path, imgs, duration=0.8)
         st.image(gif_path, caption="Urban Evolution Animation (GIF)", use_container_width=True)
